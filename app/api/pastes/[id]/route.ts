@@ -1,64 +1,37 @@
-
-
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
+export async function GET(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    // 1️⃣ Extract ID from URL
-    const url = new URL(req.url);
-    const id = url.pathname.split("/").pop();
-
-    if (!id) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // 2️⃣ Find paste
     const paste = await prisma.paste.findUnique({
-      where: { id },
+      where: { id: params.id },
     });
 
     if (!paste) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404 }
+      );
     }
 
-    const now = new Date();
-
-    // 3️⃣ TTL check
-    if (paste.expiresAt && paste.expiresAt <= now) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // 4️⃣ View limit check
-    if (paste.maxViews !== null && paste.viewsUsed >= paste.maxViews) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // 5️⃣ Increment views
-    const updated = await prisma.paste.update({
-      where: { id },
-      data: {
-        viewsUsed: { increment: 1 },
-      },
+    return NextResponse.json({
+      content: paste.content,
+      remaining_views:
+        paste.maxViews !== null
+          ? paste.maxViews - paste.viewsUsed
+          : null,
+      expires_at: paste.expiresAt,
     });
-
-    const remainingViews =
-      updated.maxViews !== null
-        ? Math.max(updated.maxViews - updated.viewsUsed, 0)
-        : null;
-
-    // 6️⃣ Return response
+  } catch (err) {
     return NextResponse.json(
-      {
-        content: updated.content,
-        remaining_views: remainingViews,
-        expires_at: updated.expiresAt,
-      },
-      { status: 200 }
+      { error: "Internal server error" },
+      { status: 500 }
     );
-  } catch (error) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 }
